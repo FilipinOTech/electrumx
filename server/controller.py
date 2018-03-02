@@ -788,15 +788,16 @@ class Controller(ServerBase):
         return await self.unconfirmed_history(hashX)
 
     async def hashX_listunspent(self, hashX):
-        '''Return the list of UTXOs of a script hash.
-
-        We should remove mempool spends from the in-DB UTXOs.'''
+        '''Return the list of UTXOs of a script hash, including mempool
+        effects.'''
         utxos = await self.get_utxos(hashX)
-        spends = await self.mempool.spends(hashX)
+        utxos = sorted(utxos)
+        utxos.extend(self.mempool.get_utxos(hashX))
+        spends = await self.mempool.potential_spends(hashX)
 
         return [{'tx_hash': hash_to_str(utxo.tx_hash), 'tx_pos': utxo.tx_pos,
                  'height': utxo.height, 'value': utxo.value}
-                for utxo in sorted(utxos)
+                for utxo in utxos
                 if (utxo.tx_hash, utxo.tx_pos) not in spends]
 
     async def address_listunspent(self, address):
@@ -824,6 +825,14 @@ class Controller(ServerBase):
         '''
         number = self.non_negative_integer(number)
         return await self.daemon_request('estimatefee', [number])
+
+    def mempool_get_fee_histogram(self):
+        '''Memory pool fee histogram.
+
+        TODO: The server should detect and discount transactions that
+        never get mined when they should.
+        '''
+        return self.mempool.get_fee_histogram()
 
     async def relayfee(self):
         '''The minimum fee a low-priority tx must pay in order to be accepted
